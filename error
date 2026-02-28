@@ -1,0 +1,28 @@
+Error                                     Traceback (most recent call last)
+Cell In[1], <a href='vscode-notebook-cell:?execution_count=1&line=79'>line 79</a>
+     77 pd.DataFrame(mben_en)["text"].to_csv(RAW/"multifinben_en_text.csv", index=False)
+     78 if mben_es is not None:
+---> <a href='vscode-notebook-cell:?execution_count=1&line=79'>79</a>     pd.DataFrame(mben_es)["text"].to_csv(RAW/"multifinben_es_text.csv", index=False)
+     81 # ---------- MAEC (GitHub) ----------
+     82 get_ipython().run_line_magic('pip', 'install -q gitpython')
+
+File /anaconda/envs/azureml_py38/lib/python3.10/site-packages/pandas/util/_decorators.py:211, in deprecate_kwarg.<locals>._deprecate_kwarg.<locals>.wrapper(*args, **kwargs)
+    209     else:
+    210         kwargs[new_arg_name] = new_arg_value
+--> <a href='/anaconda/envs/azureml_py38/lib/python3.10/site-packages/pandas/util/_decorators.py:211'>211</a> return func(*args, **kwargs)
+
+File /anaconda/envs/azureml_py38/lib/python3.10/site-packages/pandas/core/generic.py:3720, in NDFrame.to_csv(self, path_or_buf, sep, na_rep, float_format, columns, header, index, index_label, mode, encoding, compression, quoting, quotechar, lineterminator, chunksize, date_format, doublequote, escapechar, decimal, errors, storage_options)
+   3709 df = self if isinstance(self, ABCDataFrame) else self.to_frame()
+   3711 formatter = DataFrameFormatter(
+   3712     frame=df,
+   3713     header=header,
+   (...)
+   3717     decimal=decimal,
+   3718 )
+-> <a href='/anaconda/envs/azureml_py38/lib/python3.10/site-packages/pandas/core/generic.py:3720'>3720</a> return DataFrameRenderer(formatter).to_csv(
+   3721     path_or_buf,
+   3722     lineterminator=lineterminator,
+...
+    321 )
+
+File /anaconda/envs/azureml_py38/lib/python3.10/site-packages/pandas/_libs/writers.pyx:72, in pandas._libs.writers.write_csv_rows()
