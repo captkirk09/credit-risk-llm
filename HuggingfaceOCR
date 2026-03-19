@@ -1,0 +1,34 @@
+import requests, time, json, base64
+
+HF_TOKEN = "YOUR_HF_TOKEN"
+OCR_URL = "https://api-inference.huggingface.co/models/microsoft/trocr-base-printed"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
+def ocr_image(base64_str):
+    img_bytes = base64.b64decode(base64_str)
+
+    for attempt in range(6):
+        response = requests.post(OCR_URL, headers=headers, data=img_bytes)
+
+        # attempt to decode JSON safely
+        try:
+            data = response.json()
+        except json.JSONDecodeError:
+            print("Non-JSON response:", response.text[:200])
+            time.sleep(3)
+            continue
+
+        # Case: model is warming up
+        if isinstance(data, dict) and "error" in data and "loading" in data["error"].lower():
+            print("Model loading... retrying in 10 seconds")
+            time.sleep(10)
+            continue
+
+        # Success case
+        if isinstance(data, list) and "generated_text" in data[0]:
+            return data[0]["generated_text"]
+
+        print("HF Error:", data)
+        time.sleep(5)
+
+    return ""  # fallback text if all retries fail
