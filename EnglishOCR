@@ -1,0 +1,93 @@
+1. load_dataset.py
+
+import pandas as pd
+sas_url = "https://<your_storage>.blob.core.windows.net/multifinben/raw/train-00000-of-00008.parquet?<SAS>"
+df = pd.read_parquet(sas_url)
+print(df.head())
+
+2. ocr_huggingface.py
+
+import requests, time, json, base64
+HF_TOKEN = "YOUR_HF_TOKEN"
+OCR_URL = "https://api-inference.huggingface.co/models/microsoft/trocr-base-printed"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
+def ocr_image(base64_str):
+    img_bytes = base64.b64decode(base64_str)
+    for attempt in range(6):
+        response = requests.post(OCR_URL, headers=headers, data=img_bytes)
+        try:
+            data = response.json()
+        except json.JSONDecodeError:
+            print("Non‑JSON response:", response.text[:200])
+            time.sleep(3)
+            continue
+        if isinstance(data, dict) and "error" in data and "loading" in data["error"].lower():
+            print("Model warming up… retrying.")
+            time.sleep(10)
+            continue
+        if isinstance(data, list) and "generated_text" in data[0]:
+            return data[0]["generated_text"]
+        print("HF Error:", data)
+        time.sleep(5)
+    return ""
+
+3. generate_embeddings.py
+
+import requests
+HF_TOKEN = "YOUR_HF_TOKEN"
+EMB_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
+def embed_text(text):
+    r = requests.post(EMB_URL, headers=headers, json={"inputs": text})
+    return r.json()
+
+4. train_fusion_model.py
+
+import numpy as np, pandas as pd, joblib
+from sklearn.linear_model import LogisticRegression
+
+df = pd.read_pickle('processed.pkl')
+X = np.vstack(df['embedding'].values)
+y = df['label'].values
+
+model = LogisticRegression(max_iter=1000, class_weight='balanced')
+model.fit(X, y)
+
+joblib.dump(model, 'fusion_model.joblib')
+print("Model saved.")
+
+5. score.py (Azure Real-Time Endpoint)
+
+import json, numpy as np, joblib, os
+
+def init():
+    global model
+    path = os.environ['AZUREML_MODEL_DIR']
+    model = joblib.load(os.path.join(path, 'fusion_model.joblib'))
+
+def run(raw):
+    d = json.loads(raw)
+    emb = np.array(d['embedding'])
+    p = float(model.predict_proba([emb])[0][1])
+    return {'score': p}
+
+6. gpt4_reasoning.py
+
+import requests, json
+
+AOAI_URL = "https://<your-resource>.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21"
+AOAI_KEY = "<YOUR_AZURE_OPENAI_KEY>"
+headers = {"Content-Type": "application/json", "api-key": AOAI_KEY}
+
+def summarize_financial_text(text):
+    body = {
+        "messages": [
+            {"role": "system", "content": "You are a financial analyst."},
+            {"role": "user", "content": f"Summarise this SEC filing page: {text}"}
+        ]
+    }
+    r = requests.post(AOAI_URL, headers=headers, json=body)
+    return r.json()["choices"][0]["message"]["content"]
+
