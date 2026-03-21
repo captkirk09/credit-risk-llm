@@ -109,6 +109,32 @@ df = pd.read_parquet("train-00000.parquet")
 
 # Run OCR
 df["ocr_text"] = [azure_ocr(x) for x in tqdm(df["image"])]
+--fix
+import time
+from tqdm import tqdm
+from azure.core.exceptions import HttpResponseError
+
+def safe_azure_ocr(base64_str):
+    while True:
+        try:
+            return azure_ocr(base64_str)
+        except HttpResponseError as e:
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                print("Rate limit hit. Waiting 10 seconds...")
+                time.sleep(10)        # backoff
+            else:
+                print("Other error:", e)
+                return ""
+        except Exception as ex:
+            print("Unexpected error:", ex)
+            return ""
+
+results = []
+for img in tqdm(df["image"]):
+    results.append(safe_azure_ocr(img))
+    time.sleep(1)    # ADD THIS -> reduces requests per minute
+
+df["ocr_text"] = results
 
 # Create embeddings
 df["embedding"] = df["ocr_text"].apply(embed_text)
