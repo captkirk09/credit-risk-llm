@@ -51,3 +51,57 @@ from tqdm import tqdm
 df["embedding"] = [embed_text(t) for t in tqdm(df["ocr_text"])]
 
 df = df[df["embedding"].notnull()].reset_index(drop=True)
+
+--fix
+
+import requests, time, json
+
+HF_TOKEN = "YOUR_HF_TOKEN"
+
+EMB_URL = "https://router.huggingface.co/embed"
+# NOTE: This new endpoint requires you to specify the model in payload.
+
+def embed_text(text):
+    if text is None or len(str(text).strip()) == 0:
+        return None
+
+    payload = {
+        "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+        "inputs": text
+    }
+
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    for attempt in range(5):
+        try:
+            response = requests.post(EMB_URL, headers=headers, json=payload)
+
+            # Handle non-JSON early
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                print("Non-JSON from HF:", response.text[:200])
+                time.sleep(2)
+                continue
+
+            # Handle HF error payloads
+            if isinstance(data, dict) and "error" in data:
+                print("HF Error:", data["error"])
+                time.sleep(3)
+                continue
+
+            # Success (typically inside "embeddings" key)
+            if "embeddings" in data:
+                return data["embeddings"][0]
+
+            print("Unexpected HF output:", data)
+            time.sleep(2)
+
+        except Exception as e:
+            print("Embedding exception:", e)
+            time.sleep(2)
+
+    return None  # failed after 5 retries
