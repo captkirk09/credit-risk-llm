@@ -44,3 +44,10 @@ def embed_text(text):
 
     # If all retries fail:
     return None
+
+
+from tqdm import tqdm
+
+df["embedding"] = [embed_text(t) for t in tqdm(df["ocr_text"])]
+
+df = df[df["embedding"].notnull()].reset_index(drop=True)
