@@ -1,107 +1,20 @@
-import requests, time, json
+df_model['emb_len'] = df_model['embedding'].apply(lambda x: len(x) if isinstance(x, list) else None)
+df_model['emb_len'].value_counts()
 
-HF_TOKEN = "YOUR_HF_TOKEN"
-EMB_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+df_clean = df_model[df_model["embedding"].apply(lambda x: isinstance(x, list) and len(x) == 3072)]
+df_clean = df_clean.reset_index(drop=True)
+df_clean.head()
 
-def embed_text(text):
-    # handle None / empty text
-    if text is None or len(str(text).strip()) == 0:
-        return None
+import numpy as np
 
-    for attempt in range(5):
-        try:
-            response = requests.post(
-                EMB_URL,
-                headers=headers,
-                json={"inputs": text}
-            )
+X = np.vstack(df_clean['embedding'].values)
+y = df_clean['label'].values
 
-            # Check if HF returned JSON
-            try:
-                data = response.json()
-            except json.JSONDecodeError:
-                print("HF returned non-JSON:", response.text[:200])
-                time.sleep(2)
-                continue
+from sklearn.linear_model import LogisticRegression
+import joblib
 
-            # If HF error in response
-            if isinstance(data, dict) and "error" in data:
-                print("HF API error:", data)
-                time.sleep(3)
-                continue
+model = LogisticRegression(max_iter=1000, class_weight='balanced')
+model.fit(X, y)
 
-            # Expected output is a list of embeddings
-            if isinstance(data, list):
-                return data
-
-            print("Unexpected HF output:", data)
-            time.sleep(2)
-
-        except Exception as e:
-            print("Embed error:", e)
-            time.sleep(2)
-
-    # If all retries fail:
-    return None
-
-
-from tqdm import tqdm
-
-df["embedding"] = [embed_text(t) for t in tqdm(df["ocr_text"])]
-
-df = df[df["embedding"].notnull()].reset_index(drop=True)
-
---fix
-
-import requests, time, json
-
-HF_TOKEN = "YOUR_HF_TOKEN"
-
-EMB_URL = "https://router.huggingface.co/embed"
-# NOTE: This new endpoint requires you to specify the model in payload.
-
-def embed_text(text):
-    if text is None or len(str(text).strip()) == 0:
-        return None
-
-    payload = {
-        "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-        "inputs": text
-    }
-
-    headers = {
-        "Authorization": f"Bearer {HF_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    for attempt in range(5):
-        try:
-            response = requests.post(EMB_URL, headers=headers, json=payload)
-
-            # Handle non-JSON early
-            try:
-                data = response.json()
-            except json.JSONDecodeError:
-                print("Non-JSON from HF:", response.text[:200])
-                time.sleep(2)
-                continue
-
-            # Handle HF error payloads
-            if isinstance(data, dict) and "error" in data:
-                print("HF Error:", data["error"])
-                time.sleep(3)
-                continue
-
-            # Success (typically inside "embeddings" key)
-            if "embeddings" in data:
-                return data["embeddings"][0]
-
-            print("Unexpected HF output:", data)
-            time.sleep(2)
-
-        except Exception as e:
-            print("Embedding exception:", e)
-            time.sleep(2)
-
-    return None  # failed after 5 retries
+joblib.dump(model, 'fusion_model.joblib')
+print("Model saved!")
