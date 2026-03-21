@@ -34,7 +34,31 @@ def gpt4o_vision_ocr(base64_str):
         ]
     )
     return response.choices[0].message.content
+--fix
 
+from openai import OpenAI
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+def gpt4o_vision_ocr(base64_str):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Extract ONLY the text from this image. Output plain text only."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": f"data:image/png;base64,{base64_str}"
+                    }
+                ]
+            }
+        ]
+    )
+    return response.choices[0].message.content
 # -----------------------------
 # Load your dataset
 # -----------------------------
