@@ -1,0 +1,97 @@
+from openai import OpenAI
+import pandas as pd
+import time
+from tqdm import tqdm
+import json
+import os
+
+# -----------------------------
+# CONFIGURATION
+# -----------------------------
+
+OPENAI_KEY = "YOUR_OPENAI_KEY"
+client = OpenAI(api_key=OPENAI_KEY)
+
+MAX_SPEND_USD = 8.00     # <-- STOP when estimated spending reaches this
+COST_PER_IMAGE = 0.005   # <-- safe estimate for gpt-4o-mini vision OCR
+BATCH_SAVE = 25          # save every 25 images
+OUTPUT_PICKLE = "ocr_budget_safe.pkl"
+
+# -----------------------------
+# GPT-4o Vision OCR Function
+# -----------------------------
+def gpt4o_vision_ocr(base64_str):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Extract all text from this image ONLY."},
+                    {"type": "input_image", "image_url": f"data:image/png;base64,{base64_str}"}
+                ]
+            }
+        ]
+    )
+    return response.choices[0].message.content
+
+# -----------------------------
+# Load your dataset
+# -----------------------------
+df = pd.read_parquet("train-00000-of-00008.parquet")
+
+# Initialize output column
+if "ocr_text" not in df.columns:
+    df["ocr_text"] = None
+
+# Load progress if exists
+if os.path.exists(OUTPUT_PICKLE):
+    old_df = pd.read_pickle(OUTPUT_PICKLE)
+    df.update(old_df)     # update with previously processed OCR
+    print("Resumed previous progress.")
+
+# -----------------------------
+# Main Processing Loop
+# -----------------------------
+total_spend = 0.0
+processed_count = 0
+
+for idx in tqdm(range(len(df))):
+
+    # If OCR already exists, skip
+    if isinstance(df.loc[idx, "ocr_text"], str) and len(df.loc[idx, "ocr_text"]) > 0:
+        continue
+
+    # Budget check
+    projected_cost = total_spend + COST_PER_IMAGE
+    if projected_cost > MAX_SPEND_USD:
+        print(f"\nSTOPPING: Budget limit reached (${projected_cost:.2f} > ${MAX_SPEND_USD})")
+        break
+
+    try:
+        base64_img = df.loc[idx, "image"]
+        text = gpt4o_vision_ocr(base64_img)
+
+        df.loc[idx, "ocr_text"] = text
+        total_spend += COST_PER_IMAGE
+        processed_count += 1
+
+        print(f"\nProcessed {processed_count} images | Estimated Spend: ${total_spend:.4f}")
+
+        # Save every BATCH_SAVE images
+        if processed_count % BATCH_SAVE == 0:
+            df.to_pickle(OUTPUT_PICKLE)
+            print(f"Progress saved to {OUTPUT_PICKLE}.")
+
+        time.sleep(0.3)   # safety delay for API pacing
+
+    except Exception as e:
+        print(f"Error on index {idx}: {e}")
+        time.sleep(2)
+        continue
+
+# Final save
+df.to_pickle(OUTPUT_PICKLE)
+print("\nDONE! Saved:", OUTPUT_PICKLE)
+print(f"Total processed: {processed_count}")
+print(f"Estimated spend: ${total_spend:.4f}")
