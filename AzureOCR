@@ -1,0 +1,115 @@
+1. load_dataset.py
+
+import pandas as pd
+
+# Load a MultiFinBen-EnglishOCR Parquet file from Azure Storage (SAS URL)
+sas_url = "https://<your_storage>.blob.core.windows.net/multifinben/raw/train-00000-of-00008.parquet?<SAS>"
+
+df = pd.read_parquet(sas_url)
+print(df.head())
+
+2. azure_ocr.py
+
+from azure.ai.vision.imageanalysis import ImageAnalysisClient
+from azure.ai.vision.imageanalysis.models import VisualFeatures
+from azure.core.credentials import AzureKeyCredential
+import base64
+
+VISION_KEY = "<AZURE_OCR_KEY>"
+VISION_ENDPOINT = "<AZURE_OCR_ENDPOINT>"
+
+client = ImageAnalysisClient(
+    endpoint=VISION_ENDPOINT,
+    credential=AzureKeyCredential(VISION_KEY)
+)
+
+def azure_ocr(base64_str):
+    img_bytes = base64.b64decode(base64_str)
+    result = client.analyze(
+        image_data=img_bytes,
+        visual_features=[VisualFeatures.READ]
+    )
+
+    text = ""
+    for block in result.read.blocks:
+        text += block.text + "
+"
+    return text
+
+3. generate_embeddings.py
+
+import requests
+HF_TOKEN = "YOUR_HF_TOKEN"
+
+EMB_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
+def embed_text(text):
+    r = requests.post(EMB_URL, headers=headers, json={"inputs": text})
+    return r.json()   # returns 768-dimensional embedding
+
+4. process_dataset.py
+
+from tqdm import tqdm
+import pandas as pd
+from azure_ocr import azure_ocr
+from generate_embeddings import embed_text
+
+# Load dataset
+df = pd.read_parquet("train-00000.parquet")
+
+# Run OCR
+df["ocr_text"] = [azure_ocr(x) for x in tqdm(df["image"])]
+
+# Create embeddings
+df["embedding"] = df["ocr_text"].apply(embed_text)
+
+# Save
+df.to_pickle("processed.pkl")
+
+5. train_fusion_model.py
+
+import numpy as np, pandas as pd, joblib
+from sklearn.linear_model import LogisticRegression
+
+df = pd.read_pickle('processed.pkl')
+X = np.vstack(df['embedding'].values)
+y = df['label'].values   # Only if labels exist
+
+model = LogisticRegression(max_iter=1000, class_weight='balanced')
+model.fit(X, y)
+
+joblib.dump(model, 'fusion_model.joblib')
+print("Model saved.")
+
+6. score.py
+
+import json, numpy as np, joblib, os
+
+def init():
+    global model
+    path = os.environ['AZUREML_MODEL_DIR']
+    model = joblib.load(os.path.join(path, 'fusion_model.joblib'))
+
+def run(raw):
+    d = json.loads(raw)
+    emb = np.array(d['embedding'])
+    p = float(model.predict_proba([emb])[0][1])
+    return {'score': p}
+
+7. gpt4_reasoning.py
+
+from openai import OpenAI
+client = OpenAI(api_key="OPENAI_API_KEY")
+
+def gpt4_summary(text):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a financial analyst."},
+            {"role": "user", "content": f"Summarise this SEC filing page:
+{text}"}
+        ]
+    )
+    return response.choices[0].message.content
+
