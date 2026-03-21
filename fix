@@ -1,20 +1,45 @@
-df_model['emb_len'] = df_model['embedding'].apply(lambda x: len(x) if isinstance(x, list) else None)
-df_model['emb_len'].value_counts()
+def process_page(index, use_endpoint=False, endpoint_url=None):
+    result = {}
 
-df_clean = df_model[df_model["embedding"].apply(lambda x: isinstance(x, list) and len(x) == 3072)]
-df_clean = df_clean.reset_index(drop=True)
-df_clean.head()
+    # 1️⃣ OCR text
+    ocr_text = df.loc[index, "ocr_text"]
+    result["ocr_text"] = ocr_text
 
-import numpy as np
+    # 2️⃣ Embedding
+    emb = df.loc[index, "embedding"]
+    result["embedding"] = emb
 
-X = np.vstack(df_clean['embedding'].values)
-y = df_clean['label'].values
+    # 3️⃣ Optional Azure score
+    if use_endpoint and endpoint_url:
+        try:
+            payload = {"embedding": emb}
+            r = requests.post(endpoint_url, json=payload)
+            result["score"] = r.json().get("score")
+        except:
+            result["score"] = None
+    else:
+        result["score"] = None
 
-from sklearn.linear_model import LogisticRegression
-import joblib
+    # 4️⃣ GPT‑4o summary and explanation (FIXED)
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a financial analyst."},
+                {
+                    "role": "user",
+                    "content": f"""Summarise and explain this SEC filing page:
 
-model = LogisticRegression(max_iter=1000, class_weight='balanced')
-model.fit(X, y)
+{ocr_text}
+"""
+                }
+            ]
+        )
+        summary = resp.choices[0].message.content
+    except Exception as e:
+        summary = f"GPT‑4o error: {e}"
 
-joblib.dump(model, 'fusion_model.joblib')
-print("Model saved!")
+    result["gpt4_summary"] = summary
+    result["gpt4_explanation"] = summary
+
+    return result
