@@ -1,3 +1,1 @@
-BadRequestError: Error code: 400 - {'error': {'message': "Invalid value: 'input_text'. Supported values are: 'text', 'image_url', 'input_audio', 'refusal', 'audio', and 'file'.", 'type': 'invalid_request_error', 'param': 'messages[0].content[0].type', 'code': 'invalid_value'}}
-
-Error on index 0: Error code: 400 - {'error': {'message': "Invalid type for 'messages[0].content[1].image_url': expected an object, but got a string instead.", 'type': 'invalid_request_error', 'param': 'messages[0].content[1].image_url', 'code': 'invalid_type'}}
+HF API error: {'error': 'https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead.'}
