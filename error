@@ -1,1 +1,1 @@
-HF API error: {'error': 'https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead.'}
+ValueError: all the input array dimensions for the concatenation axis must match exactly, but along dimension 1, the array at index 0 has size 3072 and the array at index 12 has size 1
