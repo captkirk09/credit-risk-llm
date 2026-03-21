@@ -52,13 +52,20 @@ def gpt4o_vision_ocr(base64_str):
                     },
                     {
                         "type": "image_url",
-                        "image_url": f"data:image/png;base64,{base64_str}"
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64_str}"
+                        }
                     }
                 ]
             }
         ]
     )
     return response.choices[0].message.content
+
+
+test_text = gpt4o_vision_ocr(df["image"].iloc[0])
+print(test_text)
+
 # -----------------------------
 # Load your dataset
 # -----------------------------
