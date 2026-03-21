@@ -1,0 +1,113 @@
+1. load_dataset.py
+
+import pandas as pd
+
+sas_url = "https://<your-storage>.blob.core.windows.net/multifinben/raw/train-00000-of-00008.parquet?<SAS>"
+df = pd.read_parquet(sas_url)
+print(df.head())
+
+2. gpt4o_vision_ocr.py
+
+from openai import OpenAI
+client = OpenAI(api_key="OPENAI_API_KEY")
+
+def gpt4o_vision_ocr(base64_str):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Extract ONLY the text from this image."},
+                    {"type": "input_image", "image_url": f"data:image/png;base64,{base64_str}"}
+                ]
+            }
+        ]
+    )
+    return response.choices[0].message.content
+
+3. process_ocr.py
+
+from tqdm import tqdm
+from gpt4o_vision_ocr import gpt4o_vision_ocr
+import pandas as pd
+
+# load df again
+df = pd.read_parquet("train-00000.parquet")
+
+df["ocr_text"] = [gpt4o_vision_ocr(img) for img in tqdm(df["image"])]
+
+df.to_pickle("ocr_output.pkl")
+
+4. generate_embeddings.py
+
+import requests
+HF_TOKEN = "YOUR_HF_TOKEN"
+
+EMB_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/"
+EMB_URL += "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
+def embed_text(text):
+    r = requests.post(EMB_URL, headers=headers, json={"inputs": text})
+    return r.json()  # 768‑dimension embedding
+
+5. process_embeddings.py
+
+from generate_embeddings import embed_text
+import pandas as pd
+
+# Load OCR results
+df = pd.read_pickle("ocr_output.pkl")
+
+df["embedding"] = df["ocr_text"].apply(embed_text)
+
+df.to_pickle("processed.pkl")
+
+6. train_fusion_model.py
+
+import numpy as np, pandas as pd, joblib
+from sklearn.linear_model import LogisticRegression
+
+df = pd.read_pickle('processed.pkl')
+
+X = np.vstack(df['embedding'])
+y = df['label']  # only if labels exist
+
+model = LogisticRegression(max_iter=1000, class_weight='balanced')
+model.fit(X, y)
+
+joblib.dump(model, 'fusion_model.joblib')
+print("Model saved.")
+
+7. score.py (Azure Endpoint)
+
+import json, numpy as np, joblib, os
+
+def init():
+    global model
+    path = os.environ['AZUREML_MODEL_DIR']
+    model = joblib.load(os.path.join(path, 'fusion_model.joblib'))
+
+def run(raw):
+    d = json.loads(raw)
+    emb = np.array(d['embedding'])
+    p = float(model.predict_proba([emb])[0][1])
+    return {'score': p}
+
+8. gpt4o_reasoning.py
+
+from openai import OpenAI
+client = OpenAI(api_key="OPENAI_API_KEY")
+
+def gpt4o_reason(text):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a financial analyst."},
+            {"role": "user", "content": f"Summarise and explain this financial text:
+{text}"}
+        ]
+    )
+    return response.choices[0].message.content
+
