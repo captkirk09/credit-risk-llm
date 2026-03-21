@@ -35,6 +35,55 @@ def azure_ocr(base64_str):
         text += block.text + "
 "
     return text
+--fix
+!pip install azure-cognitiveservices-vision-computervision
+
+from azure.cognitiveservices.vision.computervision import ComputerVisionClient
+from msrest.authentication import CognitiveServicesCredentials
+import base64
+from io import BytesIO
+
+# Your Azure OCR credentials
+VISION_KEY = "<YOUR_AZURE_OCR_KEY>"
+VISION_ENDPOINT = "<YOUR_AZURE_OCR_ENDPOINT>"
+
+client = ComputerVisionClient(
+    VISION_ENDPOINT,
+    CognitiveServicesCredentials(VISION_KEY)
+)
+
+def azure_ocr(base64_str):
+    """Extracts text using Azure Computer Vision OCR (Read API)."""
+    img_bytes = base64.b64decode(base64_str)
+
+    # Call Azure Read API
+    result = client.read_in_stream(BytesIO(img_bytes), raw=True)
+
+    # Extract operation location
+    operation_location = result.headers["Operation-Location"]
+    operation_id = operation_location.split("/")[-1]
+
+    # Wait for Azure to finish OCR
+    import time
+    while True:
+        result = client.get_read_result(operation_id)
+        if result.status not in ['notStarted', 'running']:
+            break
+        time.sleep(1)
+
+    # Collect text
+    if result.status == "succeeded":
+        text = ""
+        for line in result.analyze_result.read_results[0].lines:
+            text += line.text + "\n"
+        return text
+
+    return ""
+
+--test
+
+sample_text = azure_ocr(df["image"].iloc[0])
+print(sample_text)
 
 3. generate_embeddings.py
 
