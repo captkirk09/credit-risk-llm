@@ -1,45 +1,41 @@
-def process_page(index, use_endpoint=False, endpoint_url=None):
-    result = {}
+from tqdm import tqdm
+import time
 
-    # 1️⃣ OCR text
-    ocr_text = df.loc[index, "ocr_text"]
-    result["ocr_text"] = ocr_text
+# Initialize column
+df["ocr_text"] = df.get("ocr_text", None)
 
-    # 2️⃣ Embedding
-    emb = df.loc[index, "embedding"]
-    result["embedding"] = emb
+# Budget controls
+COST = 0.005          # price per OCR call
+MAX  = 8.0            # max spend
+spent = 0.0
+count = 0
 
-    # 3️⃣ Optional Azure score
-    if use_endpoint and endpoint_url:
-        try:
-            payload = {"embedding": emb}
-            r = requests.post(endpoint_url, json=payload)
-            result["score"] = r.json().get("score")
-        except:
-            result["score"] = None
-    else:
-        result["score"] = None
+print(f"Starting OCR with max budget = {MAX} USD")
 
-    # 4️⃣ GPT‑4o summary and explanation (FIXED)
+for i in tqdm(range(len(df)), desc="OCR processing"):
+    
+    # Skip already-processed rows
+    if isinstance(df.loc[i, "ocr_text"], str) and len(df.loc[i, "ocr_text"]) > 0:
+        continue
+    
+    # Enforce budget limit
+    if spent + COST > MAX:
+        print("Budget limit reached — stopping OCR.")
+        break
+
     try:
-        resp = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a financial analyst."},
-                {
-                    "role": "user",
-                    "content": f"""Summarise and explain this SEC filing page:
+        # Run OCR on the base64 image
+        txt = gpt4o_vision_ocr(df.loc[i, "image"])
+        df.loc[i, "ocr_text"] = txt
 
-{ocr_text}
-"""
-                }
-            ]
-        )
-        summary = resp.choices[0].message.content
+        # Update cost counters
+        spent += COST
+        count += 1
+
     except Exception as e:
-        summary = f"GPT‑4o error: {e}"
+        print(f"OCR failed for index {i}: {e}")
+        time.sleep(1)
 
-    result["gpt4_summary"] = summary
-    result["gpt4_explanation"] = summary
+print(f"OCR complete → {count} pages processed, total spent: {spent:.3f} USD")
 
-    return result
+df.to_pickle("ocr_en_es.pkl")
