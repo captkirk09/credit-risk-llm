@@ -1,0 +1,180 @@
+from sklearn.model_selection import train_test_split
+
+X = np.vstack(df["embedding"])
+y = df["label_id"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.20, stratify=y
+)
+
+sizes = [len(X_train), len(X_test)]
+labels = ["Train", "Test"]
+
+plt.figure(figsize=(5,5))
+plt.pie(sizes, labels=labels, autopct="%1.1f%%", colors=["#8BC34A","#FFC107"])
+plt.title("Figure 4.9: Train–Test Split Distribution")
+plt.savefig("figure_4_9_split.png", dpi=300)
+plt.show()
+
+
+from sklearn.model_selection import train_test_split
+
+X = np.vstack(df["embedding"])
+y = df["label_id"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.20, stratify=y
+)
+
+sizes = [len(X_train), len(X_test)]
+labels = ["Train", "Test"]
+
+plt.figure(figsize=(5,5))
+plt.pie(sizes, labels=labels, autopct="%1.1f%%", colors=["#8BC34A","#FFC107"])
+plt.title("Figure 4.9: Train–Test Split Distribution")
+plt.savefig("figure_4_9_split.png", dpi=300)
+plt.show()
+
+
+pca = PCA(n_components=2).fit_transform(X)
+
+plt.figure(figsize=(8,5))
+plt.scatter(pca[:,0], pca[:,1], c=(df["language"]=="es"), cmap="coolwarm")
+plt.title("Figure 4.11: PCA Projection of Multilingual Embeddings")
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.savefig("figure_4_11_pca_embeddings.png", dpi=300)
+plt.show()
+
+
+
+plt.figure(figsize=(10,5))
+sns.histplot(df["text_length"], bins=60, kde=True)
+plt.title("Figure 4.12: Histogram of OCR Text Lengths")
+plt.savefig("figure_4_12_text_histogram.png", dpi=300)
+plt.show()
+
+
+
+
+plt.figure(figsize=(8,4))
+sns.countplot(x=df["label"], palette="viridis")
+plt.title("Figure 4.13: Frequency of Auto‑Labelled Categories")
+plt.xticks(rotation=45)
+plt.savefig("figure_4_13_label_frequency.png", dpi=300)
+plt.show()
+
+
+from sklearn.linear_model import LogisticRegression
+
+model = LogisticRegression(max_iter=2000, class_weight="balanced")
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+cm = confusion_matrix(y_test, y_pred)
+
+plt.figure(figsize=(8,6))
+sns.heatmap(cm, annot=True, cmap="Blues")
+plt.title("Figure 4.14: Confusion Matrix for Model Predictions")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.savefig("figure_4_14_confusion_matrix.png", dpi=300)
+plt.show()
+
+# ============================================================
+# NOTEBOOK: SHAP and LIME Visualisations for Credit-Risk Model
+# ============================================================
+
+import numpy as np
+import pandas as pd
+import joblib
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import shap
+from lime.lime_tabular import LimeTabularExplainer
+from sklearn.metrics import f1_score, confusion_matrix
+import seaborn as sns
+
+# --------------------------
+# LOAD DATA AND MODEL
+# --------------------------
+
+df = pd.read_pickle("MultiFinBen_EN_ES_ready.pkl")
+model = joblib.load("fusion_model.joblib")
+le = joblib.load("label_encoder.joblib")
+
+# Keep only valid embeddings
+df_clean = df[df["embedding"].apply(lambda x: isinstance(x, list))].reset_index(drop=True)
+
+X = np.vstack(df_clean["embedding"])
+y = le.transform(df_clean["label"])
+
+print("Dataset shape:", X.shape)
+print("Labels shape:", y.shape)
+
+
+
+# Select a small background subset for SHAP
+background_size = 50
+background = X[:background_size]
+
+# Create SHAP explainer
+explainer = shap.KernelExplainer(model.predict_proba, background)
+
+
+
+
+# Explain one sample
+sample_idx = 0
+shap_values = explainer.shap_values(X[sample_idx:sample_idx+1])
+
+print("Computed SHAP for label classes:", len(shap_values))
+
+
+
+
+# Visualise importance across all embedding dimensions
+plt.title("SHAP Summary Plot (Single Instance)")
+shap.summary_plot(shap_values, X[sample_idx:sample_idx+1])
+
+
+
+
+plt.title("SHAP Bar Plot (Feature Importance)")
+shap.summary_plot(shap_values, X[sample_idx:sample_idx+1], plot_type="bar")
+
+
+
+# Prepare LIME explainer
+explainer_lime = LimeTabularExplainer(
+    training_data=X[:200],             # local neighbourhood
+    feature_names=[f"f{i}" for i in range(X.shape[1])],
+    class_names=list(le.classes_),
+    discretize_continuous=True
+)
+
+print("LIME explainer ready.")
+
+
+
+instance_idx = 0
+exp = explainer_lime.explain_instance(
+    X[instance_idx],
+    model.predict_proba,
+    num_features=12
+)
+
+exp.show_in_notebook()
+
+
+
+
+fig = exp.as_pyplot_figure()
+plt.title("LIME Explanation for Sample Instance")
+fig.savefig("lime_explanation_instance.png", dpi=300)
+plt.show()
+
+
+
+
+
